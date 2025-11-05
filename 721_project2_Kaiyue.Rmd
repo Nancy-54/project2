@@ -1,0 +1,141 @@
+---
+title: "project2"
+author: "Kaiyue Lou"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(lubridate)
+library(ggplot2)
+```
+
+## Background
+
+Sickle cell disease (SCD) is a group of genetic disorders in which red blood cells contort into a sickle shape. Symptoms of SCD
+include anemia (caused by misshapen cells dying early) as well as pain, infection, and stroke (caused by sickle cells blocking blood
+flow). There is some evidence that exposure to air pollution aggravates vaso-occlusion and pain in SCD patients.
+A hematologist at Duke wants to study the associations between various air pollutants and SCD in Durham County, North Carolina.
+She provides data on health system utilization (i.e., emergency department visits, hospitalizations, etc.) for SCD and you obtain
+air pollution data from the EPA. The pollutant data are raw measurements taken from the air pollution monitor at the RDU
+airport. 
+
+
+```{r data clean, echo=FALSE, message=FALSE, warning=FALSE}
+#read files
+data2018 <- read.csv("~/Desktop/721_project2/data/AQ_2018.csv")
+data2019 <- read.csv("~/Desktop/721_project2/data/AQ_2019.csv")
+data2020 <- read.csv("~/Desktop/721_project2/data/AQ_2020.csv")
+
+#data cleaning
+data2018_clean <- data2018 %>%
+  #rename it appropriately
+    rename(
+      Date = 'Date',
+      CO = 'Daily.Max.8.hour.CO.Concentration',
+      PM2.5 = 'Daily.Mean.PM2.5.Concentration',
+      Ozone = 'Daily.Max.8.hour.Ozone.Concentration'
+    ) %>%
+    mutate(
+      date = mdy(Date),    #Format the date variable correctly    
+      CO = ifelse(CO < 0, 0, CO),
+      PM2.5 = ifelse(PM2.5 < 0, 0, PM2.5),
+      Ozone = ifelse(Ozone < 0, 0, Ozone)  #correct error issues
+    ) %>%
+  #calculate the daily average
+    group_by(date) %>%
+    summarise(across(c(CO, PM2.5, Ozone), mean, na.rm = TRUE)) %>% 
+  #remove duplicate rows
+    distinct() 
+  
+#same treatments in 2019 and 2020
+data2019_clean <- data2019 %>%
+    rename(
+      Date = 'Date',
+      CO = 'Daily.Max.8.hour.CO.Concentration',
+      PM2.5 = 'Daily.Mean.PM2.5.Concentration',
+      Ozone = 'Daily.Max.8.hour.Ozone.Concentration'
+    ) %>%
+    mutate(
+      date = mdy(Date),        
+      CO = ifelse(CO < 0, 0, CO),
+      PM2.5 = ifelse(PM2.5 < 0, 0, PM2.5),
+      Ozone = ifelse(Ozone < 0, 0, Ozone)
+    ) %>%
+    group_by(date) %>%
+    summarise(across(c(CO, PM2.5, Ozone), mean, na.rm = TRUE)) %>%
+    distinct()
+
+data2020_clean <- data2020 %>%
+    rename(
+      Date = 'Date',
+      CO = 'Daily.Max.8.hour.CO.Concentration',
+      PM2.5 = 'Daily.Mean.PM2.5.Concentration',
+      Ozone = 'Daily.Max.8.hour.Ozone.Concentration'
+    ) %>%
+    mutate(
+      date = mdy(Date),        
+      CO = ifelse(CO < 0, 0, CO),
+      PM2.5 = ifelse(PM2.5 < 0, 0, PM2.5),
+      Ozone = ifelse(Ozone < 0, 0, Ozone)
+    ) %>%
+    group_by(date) %>%
+    summarise(across(c(CO, PM2.5, Ozone), mean, na.rm = TRUE)) %>%
+    distinct()
+```
+
+\newpage
+## Plot1
+
+I made a plot about the monthly average difference between CO and Ozone concentrations from 2018 to 2020.
+
+```{r plot1, echo=FALSE, message=FALSE, warning=FALSE}
+data_all <- bind_rows(data2018_clean, data2019_clean, data2020_clean)
+plot1_data <- data_all %>%
+  mutate(month = month(date, label = TRUE)) %>%
+  #Pivot data from wide to long for ggplot
+  pivot_longer(cols = c(CO, Ozone), names_to = "pollutant", values_to = "value") %>%
+  group_by(month, pollutant) %>%  #order by month
+  summarise(
+    mean = mean(value, na.rm = TRUE),  #monthly averages, averaged over the 3 years
+    se = sd(value, na.rm = TRUE) / sqrt(n()),
+    ci_lower = mean - 1.96 * se,
+    ci_upper = mean + 1.96 * se  #add confidence interval
+  )
+
+#Connect the points in different groups with lines and represent them with different colors.
+ggplot(plot1_data, aes(x = month, y = mean, color = pollutant, group = pollutant)) +
+  geom_point(size = 2) +
+  geom_line() +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.2) +     #error bar
+  labs(title = "Monthly Average CO and Ozone Concentrations (2018-2020)",
+       x = "Month", y = "Concentration", color = "Pollutant") +
+  theme_minimal(base_size = 10)
+```
+
+\newpage
+## Plot2
+
+I made a plot about the monthly PM2.5 concentration by year from 2018 to 2020.
+
+```{r plot2, echo=FALSE, message=FALSE, warning=FALSE}
+plot2_data <- bind_rows(
+  mutate(data2018_clean, year = 2018),
+  mutate(data2019_clean, year = 2019),
+  mutate(data2020_clean, year = 2020)
+) %>%
+  mutate(month = month(date, label = TRUE)) %>%
+  group_by(year, month) %>%
+  summarise(mean_PM2.5 = mean(PM2.5, na.rm = TRUE))
+
+ggplot(plot2_data, aes(x = month, y = mean_PM2.5, color = as.factor(year), group = year)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  labs(title = "Monthly PM2.5 Concentration by Year",
+       x = "Month", y = "Mean PM2.5 (µg/m³)", color = "Year") +
+  theme_minimal()
+```
+
